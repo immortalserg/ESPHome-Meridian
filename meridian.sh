@@ -1,93 +1,99 @@
 #!/bin/bash
-PORT="/dev/ttyUSB1"
-BAUD_RATE="9600"
-INITIAL_VOLUME=50 
-if [ ! -c "$PORT" ]; then
-    echo "Ошибка: Последовательный порт $PORT не найден." >&2
-    echo "Убедитесь, что устройство подключено и порт указан верно." >&2
-    exit 1
-fi
-if [ ! -r "$PORT" ] || [ ! -w "$PORT" ]; then
-    echo "Ошибка: Недостаточно прав для чтения/записи в $PORT." >&2
-    echo "Попробуйте запустить скрипт с sudo или добавьте пользователя в группу 'dialout' (или аналогичную):" >&2
-    echo "sudo usermod -a -G dialout \$USER" >&2
-    echo "После этого может потребоваться перезайти в систему." >&2
-    exit 1
-fi
-NN=$INITIAL_VOLUME
-if [[ $NN -lt 1 ]]; then NN=1; fi
-if [[ $NN -gt 99 ]]; then NN=99; fi
 
-echo "Инициализация порта $PORT со скоростью $BAUD_RATE..."
-echo "Начальная громкость: $(printf "%02d" $NN)"
-echo "Ожидание команд VP\\r (Volume+) или VM\\r (Volume-)..."
-echo "Нажмите Ctrl+C для выхода."
-echo "--- Лог приема ---"
-stty_orig=$(stty -g -F "$PORT")
-stty -F "$PORT" "$BAUD_RATE" raw -echo cs8 -cstopb -parenb min 1 time 0
-if [[ $? -ne 0 ]]; then
-    echo "Ошибка: Не удалось настроить порт $PORT" >&2
+PORT="/dev/ttyUSB0"
+BAUD_RATE="9600"
+INITIAL_VOLUME=50
+TIMEOUT=1  # секунд без данных для завершения команды
+
+if [ ! -c "$PORT" ]; then
+    echo "Ошибка: Порт $PORT не найден." >&2
     exit 1
 fi
-cleanup() {
-    echo -e "\nВосстановление настроек порта $PORT..."
-    stty -F "$PORT" "$stty_orig"
-    echo "Скрипт завершен."
-    exit 0
-}
-trap cleanup SIGINT SIGTERM EXIT
+
+if [ ! -r "$PORT" ] || [ ! -w "$PORT" ]; then
+    echo "Ошибка: Нет доступа к $PORT" >&2
+    exit 1
+fi
+
+NN=$INITIAL_VOLUME
+[[ $NN -lt 1 ]] && NN=1
+[[ $NN -gt 99 ]] && NN=99
+
+echo "Порт: $PORT, Скорость: $BAUD_RATE"
+echo "Начальная громкость: $NN"
+echo "Ожидание команд VP / VM / VNnn (через \\r или паузу)"
+echo "--- Лог ---"
+
+stty_orig=$(stty -g -F "$PORT")
+stty -F "$PORT" "$BAUD_RATE" raw -echo cs8 -cstopb -parenb min 1 time 0 || exit 1
+
+trap 'stty -F "$PORT" "$stty_orig"; echo -e "\nВыход"; exit 0' SIGINT SIGTERM EXIT
+
 exec 3<> "$PORT"
+
+buffer=""
+last_input_time=$(date +%s)
+
+process_buffer() {
+    local command="$1"
+    [[ -z "$command" ]] && return
+
+    echo -n " [Команда: $command] "
+
+    response=""
+
+    case "$command" in
+        "VP")
+            (( NN < 99 )) && ((NN++))
+            echo "→ Громкость: $NN"
+            response=$'\r'"VOLUME    $(printf "%02d" $NN)"$'\r'
+            ;;
+
+        "VM")
+            (( NN > 1 )) && ((NN--))
+            echo "→ Громкость: $NN"
+            response=$'\r'"VOLUME    $(printf "%02d" $NN)"$'\r'
+            ;;
+
+        VN[0-9][0-9])
+            nn="${command:2:2}"
+            if [[ "$nn" =~ ^[0-9]{2}$ && $nn -ge 1 && $nn -le 99 ]]; then
+                NN="$nn"
+                echo "→ Установлена: $NN"
+            else
+                echo "→ Некорректное значение: $nn"
+            fi
+            response=$'\r'"VOLUME    $(printf "%02d" $NN)"$'\r'
+            ;;
+
+        *)
+            echo "→ Неизвестная команда"
+            ;;
+    esac
+
+    if [[ -n "$response" ]]; then
+        printf "%s" "$response" >&3
+        echo "Отправлен ответ: VOLUME    $(printf "%02d" $NN)"
+    fi
+}
+
 while true; do
-    if read -r -n 1 -t 1 char <&3; then
-        printf "%s" "$char"
+    if read -r -n 1 -t 0.1 char <&3; then
         buffer+="$char"
+        printf "%s" "$char"
+        last_input_time=$(date +%s)
+
         if [[ "$char" == $'\r' ]]; then
             command="${buffer%$'\r'}"
-             printf " [Команда: %s]\n" "$command"
-            response="" 
-            case "$command" in
-                "VP")
-                    if [[ $NN -lt 99 ]]; then
-                        ((NN++))
-                        echo "Громкость увеличена до: $(printf "%02d" $NN)"
-                    else
-                        echo "Громкость на максимуме (99)."
-                    fi
-                    NN_formatted=$(printf "%02d" $NN)
-                    response=$'\r'"VOLUME    $NN_formatted"$'\r'
-                    ;;
-                "VM")
-                    if [[ $NN -gt 1 ]]; then
-                        ((NN--))
-                        echo "Громкость уменьшена до: $(printf "%02d" $NN)"
-                    else
-                        echo "Громкость на минимуме (01)."
-                    fi
-                    NN_formatted=$(printf "%02d" $NN)
-                    response=$'\r'"VOLUME    $NN_formatted"$'\r'
-                    ;;
-                VN[0-9][0-9]) 
-	                nn="${command:2:2}" # Извлекаем значение nn
-	                   if [[ "$nn" =~ ^[0-9]{2}$ && "$nn" -ge 1 && "$nn" -le 99 ]]; then
-	                     NN="$nn" 
-	                     echo "Громкость установлена на: $(printf "%02d" $NN)"
-	                   else
-	                     echo "Некорректное значение для команды VN: $nn"
-	                   fi
-	                  response=$'\r'"VOLUME    $NN"$'\r'
-	                   ;;
-                *)
-                    ;;
-            esac
-            if [[ -n "$response" ]]; then
-                printf "%s" "$response" >&3
-                echo "Отправлен ответ: VOLUME    $(printf "%02d" $NN)"
-            fi
+            process_buffer "$command"
             buffer=""
         fi
     else
-         : 
+        now=$(date +%s)
+        delta=$((now - last_input_time))
+        if [[ $delta -ge $TIMEOUT && -n "$buffer" ]]; then
+            process_buffer "$buffer"
+            buffer=""
+        fi
     fi
 done
-exec 3>&-
-cleanup
