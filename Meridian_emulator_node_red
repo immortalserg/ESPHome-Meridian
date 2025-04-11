@@ -1,0 +1,66 @@
+[
+    {
+        "id": "351b583511423747",
+        "type": "serial in",
+        "z": "34b8699fa1bd72b5",
+        "name": "",
+        "serial": "3f2a9c1d47a709f9",
+        "x": 80,
+        "y": 440,
+        "wires": [
+            [
+                "64b7bb93bb8d9aae"
+            ]
+        ]
+    },
+    {
+        "id": "5681960bc6fcce52",
+        "type": "serial out",
+        "z": "34b8699fa1bd72b5",
+        "name": "",
+        "serial": "3f2a9c1d47a709f9",
+        "x": 440,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "64b7bb93bb8d9aae",
+        "type": "function",
+        "z": "34b8699fa1bd72b5",
+        "name": "Meridian emulator",
+        "func": "let volum = global.get (\"volum\");\nif (!volum) {volum = 50; global.set (\"volum\", 50)}\nlet res = msg.payload;\nlet volum2;\nlet res2 = res.replace(\"\\r\",\"\");\nres = res2[0]+res2[1];\nlet vols = res2[2] * 10  + res2[3] * 1 ;\nnode.warn (res);\nnode.warn (vols);\n\n\nswitch (res) {\n    case \"VP\":\n        if (volum < 99) {\n            volum++;\n            global.set(\"volum\", volum);\n        volum2 = volum;\n        if (volum < 10) {volum2 = \"0\"+volum }\n        msg.payload = \"\\rTrifield  \"+volum2+\"\\r\";\n        return msg;\n        } else {return;}\n        break;\n    case \"VM\":\n        if (volum > 1) {\n            volum--;\n            global.set(\"volum\", volum);\n        volum2 = volum;\n        if (volum < 10) { volum2 = \"0\" + volum }\n        msg.payload = \"\\rTrifield  \" + volum2+\"\\r\";\n        return msg;\n        } else {return;}\n        break;\n\n    case \"VN\":\n        global.set(\"volum\", vols);\n        if (vols < 10) { vols = \"0\" + vols }\n        msg.payload = \"\\rTrifield  \" + vols+\"\\r\";\n        return msg;\n        break;\n\n    case \"CD\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rCD        \" + volum + \"\\r\";\n        break;\n    case \"RD\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rRadio     \" + volum + \"\\r\";\n        break;\n    case \"DT\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rDTV       \" + volum + \"\\r\";\n        break;\n    case \"TV\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rTV        \" + volum + \"\\r\";\n        break;\n    case \"T1\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rTape1     \" + volum + \"\\r\";\n        break;\n    case \"T2\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rTape2     \" + volum + \"\\r\";\n        break;\n    case \"CR\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rCDR       \" + volum + \"\\r\";\n        break;\n    case \"CB\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rCable     \" + volum + \"\\r\";\n        break;\n    case \"DV\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rDVD       \" + volum + \"\\r\";\n        break;\n    case \"V1\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rVCR1      \" + volum + \"\\r\";\n        break;\n    case \"V2\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rVCR2      \" + volum + \"\\r\";\n        break;\n    case \"LD\":\n        if (volum < 10) { volum = \"0\" + volum }\n        msg.payload = \"\\rLdisc     \" + volum + \"\\r\";\n        break;\n\n    default:\n        return;\n        break;\n\n}\n\n\nreturn;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 270,
+        "y": 440,
+        "wires": [
+            [
+                "5681960bc6fcce52"
+            ]
+        ]
+    },
+    {
+        "id": "3f2a9c1d47a709f9",
+        "type": "serial-port",
+        "name": "ttyUSB0",
+        "serialport": "/dev/ttyUSB0",
+        "serialbaud": "9600",
+        "databits": 8,
+        "parity": "none",
+        "stopbits": 1,
+        "waitfor": "",
+        "dtr": "none",
+        "rts": "none",
+        "cts": "none",
+        "dsr": "none",
+        "newline": "\\r",
+        "bin": "false",
+        "out": "char",
+        "addchar": "",
+        "responsetimeout": 10000
+    }
+]
