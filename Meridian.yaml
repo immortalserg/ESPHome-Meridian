@@ -13,6 +13,12 @@ esphome:
   project:
     name: ${manufacture}.${device_description}
     version: ${version}
+  on_boot:
+    priority: -100
+    then:
+      - delay: 2s
+      - uart.write: "VP\r"
+      - uart.write: "VM\r"
 esp32:
   board: esp32dev
   framework:
