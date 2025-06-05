@@ -6,6 +6,7 @@ substitutions:
   version: 1.0.0
   rxpin: GPIO16
   txpin: GPIO17
+  irpin: GPIO14
 
 esphome:
   name: ${name}
@@ -17,8 +18,7 @@ esphome:
     priority: -100
     then:
       - delay: 2s
-      - uart.write: "VP\r"
-      - uart.write: "VM\r"
+      - uart.write: "CS3\r"
 esp32:
   board: esp32dev
   framework:
@@ -26,6 +26,10 @@ esp32:
 api:
   encryption:
     key: !secret api_meridian
+  on_client_connected:
+    then:
+      - lambda: |-
+          id(uptime_s).publish_state(id(uptime_s).state);
 ota:
   - platform: esphome
     password: !secret ota
@@ -34,11 +38,22 @@ wifi:
   password: !secret wifi_password
   ap:
     ssid: "Meridian-Esp32"
-    password: "3xhTvZS0Rcar"
+    password: "meridian561"
 captive_portal:
 web_server:
   port: 80
   local: true
+
+remote_receiver:
+  pin:
+    number: ${irpin}
+    inverted: true
+    mode: INPUT_PULLUP
+  dump: rc6
+  tolerance: 25%
+  filter: 4us
+  idle: 10ms
+
 
 uart:
   - id: uart_2
@@ -102,6 +117,16 @@ button:
     name: "Meridian Volume Down"
     on_press:
       - uart.write: "VM\r"
+  - platform: template
+    name: "Meridian Standby"
+    on_press:
+      - uart.write: "SB\r"
+  - platform: template
+    name: "Mute"
+    on_press:
+      - uart.write: "MU\r"
+
+      
 select:
   - platform: template
     name: "Meridian Source"
@@ -163,6 +188,45 @@ number:
             byte_command.push_back(static_cast<uint8_t>(c));
           }
           return byte_command;
+
+binary_sensor:
+  - platform: remote_receiver
+    name: "Volume Up IR"
+    rc6:
+      address: 0x10
+      command: 0x10
+    on_press:
+      then:
+        - if:
+            condition:
+              or:
+                - not:
+                    switch.is_on: ir_only_tape1
+                - lambda: 'return id(mode).state == "Laser Disc";'
+            then:
+              - uart.write: "VP\r"
+
+  - platform: remote_receiver
+    name: "Volume Down IR"
+    rc6:
+      address: 0x10
+      command: 0x11
+    on_press:
+      then:
+        - if:
+            condition:
+              or:
+                - not:
+                    switch.is_on: ir_only_tape1
+                - lambda: 'return id(mode).state == "Laser Disc";'
+            then:
+              - uart.write: "VM\r"
+  - platform: template
+    name: "Meridian Standby Status"
+    id: meridian_standby_status
+    device_class: power
+
+          
 sensor:
   - platform: wifi_signal
     name: "WiFi Signal dB"
