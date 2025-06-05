@@ -1,5 +1,5 @@
 # ESPHome-Meridian
-
+<img src="20241627.png" height="300">
 20241627.png
 
 Прошивка esp32 для управления усилителем Meridian 561 через порт RS232
