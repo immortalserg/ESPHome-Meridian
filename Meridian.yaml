@@ -89,6 +89,7 @@ uart:
                 {"DVD       ", "DVD"},
                 {"VCR1      ", "VCR1"},
                 {"VCR2      ", "VCR2"},
+                {"LDisc     ", "Laser Disc"},
                 {"Ldisc     ", "Laser Disc"}
               };
               auto it = source_map.find(source_code);
