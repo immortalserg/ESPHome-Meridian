@@ -25,11 +25,13 @@ esp32:
     type: arduino
 api:
   encryption:
-    key: !secret api_meridian
+    key: !secret api
   on_client_connected:
     then:
       - lambda: |-
           id(uptime_s).publish_state(id(uptime_s).state);
+      - lambda: |-
+          id(uptime2).publish_state(id(uptime2).state);
 ota:
   - platform: esphome
     password: !secret ota
@@ -38,7 +40,7 @@ wifi:
   password: !secret wifi_password
   ap:
     ssid: "Meridian-Esp32"
-    password: "meridian561"
+    password: "3xhTvZS0Rcar"
 captive_portal:
 web_server:
   port: 80
@@ -53,6 +55,10 @@ remote_receiver:
   tolerance: 25%
   filter: 4us
   idle: 10ms
+
+
+
+
 
 
 uart:
@@ -72,6 +78,14 @@ uart:
         - lambda: |-
             UARTDebug::log_string(direction, bytes);
             std::string str(bytes.begin(), bytes.end());
+            std::replace(str.begin(), str.end(), 'O', '0');
+            id(uart_raw_data).publish_state(str);
+            if (str == "         .  ") {
+              ESP_LOGI("UART", "Standby detected (OFF)");
+              id(meridian_standby_status).publish_state(false);  // OFF
+            } else {
+              id(meridian_standby_status).publish_state(true);   // ON
+            }
             ESP_LOGD("UART", "Received string length: %d", str.length());
             if (str.length() == 13) {
               std::string volume_str = str.substr(10, 2);
@@ -82,8 +96,8 @@ uart:
                 {"Radio     ", "Radio"},
                 {"DTV       ", "DTV"},
                 {"TV        ", "TV"},
-                {"Tape1     ", "Tape1"},
-                {"Tape2     ", "Tape2"},
+                {"Tape1     ", "Tape 1"},
+                {"Tape2     ", "Tape 2"},
                 {"CDR       ", "CDR"},
                 {"Cable     ", "Cable"},
                 {"DVD       ", "DVD"},
@@ -127,7 +141,12 @@ button:
     on_press:
       - uart.write: "MU\r"
 
-      
+interval:
+  - interval: 60s
+    then:
+      - uart.write: "CS3\r"
+
+
 select:
   - platform: template
     name: "Meridian Source"
@@ -137,8 +156,8 @@ select:
       - "Radio"
       - "DTV"
       - "TV"
-      - "Tape1"
-      - "Tape2"
+      - "Tape 1"
+      - "Tape 2"
       - "CDR"
       - "Cable"
       - "DVD"
@@ -154,8 +173,8 @@ select:
             {"Radio", {0x52, 0x44, 0x0D}},   // "RD\r"
             {"DTV", {0x44, 0x54, 0x0D}},     // "DT\r"
             {"TV", {0x54, 0x56, 0x0D}},      // "TV\r"
-            {"Tape1", {0x54, 0x31, 0x0D}},   // "T1\r"
-            {"Tape2", {0x54, 0x32, 0x0D}},   // "T2\r"
+            {"Tape 1", {0x54, 0x31, 0x0D}},   // "T1\r"
+            {"Tape 2", {0x54, 0x32, 0x0D}},   // "T2\r"
             {"CDR", {0x43, 0x52, 0x0D}},     // "CR\r"
             {"Cable", {0x43, 0x42, 0x0D}},   // "CB\r"
             {"DVD", {0x44, 0x56, 0x0D}},     // "DV\r"
@@ -189,6 +208,13 @@ number:
             byte_command.push_back(static_cast<uint8_t>(c));
           }
           return byte_command;
+
+switch:
+  - platform: template
+    name: "IR Only for Laser Disc"
+    id: ir_only_tape1
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
 
 binary_sensor:
   - platform: remote_receiver
@@ -227,7 +253,6 @@ binary_sensor:
     id: meridian_standby_status
     device_class: power
 
-          
 sensor:
   - platform: wifi_signal
     name: "WiFi Signal dB"
@@ -246,3 +271,32 @@ sensor:
     name: "Uptime s"
     id: uptime_s
     update_interval: 60s
+text_sensor:
+  - platform: template
+    name: "Uptime"
+    id: uptime2
+    lambda: |-
+      uint32_t dur = id(uptime_s).state;
+      int dys = 0;
+      int hrs = 0;
+      int mnts = 0;
+      if (dur > 86399) {
+        dys = trunc(dur / 86400);
+        dur = dur - (dys * 86400);
+      }
+      if (dur > 3599) {
+        hrs = trunc(dur / 3600);
+        dur = dur - (hrs * 3600);
+      }
+      if (dur > 59) {
+        mnts = trunc(dur / 60);
+        dur = dur - (mnts * 60);
+      }
+      char buffer[17];
+      sprintf(buffer, "%ud %02uh %02um %02us", dys, hrs, mnts, dur);
+      return {buffer};
+    icon: mdi:clock-start
+    update_interval: 60s
+  - platform: template
+    name: "UART Raw Data"
+    id: uart_raw_data
