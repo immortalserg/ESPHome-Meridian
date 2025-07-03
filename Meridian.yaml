@@ -56,11 +56,6 @@ remote_receiver:
   filter: 4us
   idle: 10ms
 
-
-
-
-
-
 uart:
   - id: uart_2
     tx_pin: ${txpin}  # TX пин ESP
@@ -80,17 +75,14 @@ uart:
             std::string str(bytes.begin(), bytes.end());
             std::replace(str.begin(), str.end(), 'O', '0');
             id(uart_raw_data).publish_state(str);
-            if (str == "         .  ") {
-              ESP_LOGI("UART", "Standby detected (OFF)");
+            if (str == "         .  \r") {
               id(meridian_standby_status).publish_state(false);  // OFF
             } else {
               id(meridian_standby_status).publish_state(true);   // ON
             }
-            ESP_LOGD("UART", "Received string length: %d", str.length());
             if (str.length() == 13) {
               std::string volume_str = str.substr(10, 2);
               std::string source_code = str.substr(0, 10);
-              ESP_LOGD("UART", "Source code: %s", source_code.c_str());
               std::map<std::string, std::string> source_map = {
                 {"CD        ", "CD"},
                 {"Radio     ", "Radio"},
@@ -109,21 +101,56 @@ uart:
               auto it = source_map.find(source_code);
               if (it != source_map.end()) {
                 std::string selected_source = it->second;
-                ESP_LOGD("UART", "Source selected: %s", selected_source.c_str());
                 id(mode).publish_state(selected_source);
               } else {
-                ESP_LOGD("UART", "Unknown source: %s", source_code.c_str());
+                
               }
-              int volume = std::stoi(volume_str);
-              if (volume >= 1 && volume <= 99) {
-                id(volume_control).publish_state(volume);
-                str[10] = '0' + (volume / 10);
-                str[11] = '0' + (volume % 10);
-                ESP_LOGD("UART", "Updated string with volume: %s", str.c_str());
+              if (std::all_of(volume_str.begin(), volume_str.end(), ::isdigit)) {
+                int volume = std::stoi(volume_str);
+                if (volume >= 1 && volume <= 99) {
+                  id(volume_control).publish_state(volume);
+                  str[10] = '0' + (volume / 10);
+                  str[11] = '0' + (volume % 10);
+                } else {
+                }
+              } else {
+                
               }
             }
 logger:
 button:
+  - platform: template
+    name: "Meridian Standby"
+    on_press:
+      - if:
+          condition:
+            binary_sensor.is_on: meridian_standby_status
+          then:
+            - uart.write: "SB\r"
+            - delay: 2s
+            - uart.write: "CS3\r"
+          else:
+            - uart.write: !lambda |-
+                std::map<std::string, std::vector<uint8_t>> mode_commands = {
+                  {"CD", {0x43, 0x44, 0x0D}},      // "CD\r"
+                  {"Radio", {0x52, 0x44, 0x0D}},   // "RD\r"
+                  {"DTV", {0x44, 0x54, 0x0D}},     // "DT\r"
+                  {"TV", {0x54, 0x56, 0x0D}},      // "TV\r"
+                  {"Tape 1", {0x54, 0x31, 0x0D}},   // "T1\r"
+                  {"Tape 2", {0x54, 0x32, 0x0D}},   // "T2\r"
+                  {"CDR", {0x43, 0x52, 0x0D}},     // "CR\r"
+                  {"Cable", {0x43, 0x42, 0x0D}},   // "CB\r"
+                  {"DVD", {0x44, 0x56, 0x0D}},     // "DV\r"
+                  {"VCR1", {0x56, 0x31, 0x0D}},    // "V1\r"
+                  {"VCR2", {0x56, 0x32, 0x0D}},    // "V2\r"
+                  {"Laser Disc", {0x4C, 0x44, 0x0D}} // "LD\r"
+                };
+                auto command = mode_commands.find(id(mode).state);
+                if (command != mode_commands.end()) {
+                  return command->second;
+                }
+                return std::vector<uint8_t>{};
+#      - delay: 2s
   - platform: template
     name: "Meridian Volume Up"
     on_press:
@@ -132,10 +159,6 @@ button:
     name: "Meridian Volume Down"
     on_press:
       - uart.write: "VM\r"
-  - platform: template
-    name: "Meridian Standby"
-    on_press:
-      - uart.write: "SB\r"
   - platform: template
     name: "Mute"
     on_press:
